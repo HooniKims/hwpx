@@ -72,6 +72,7 @@ op 는 네 가지다. **먼저 `tool` 을 쓰고, 도구에 없는 일만 `doc` 
 - 표: `set_cell`, **`fill_by_label`**(label, text, direction, occurrence — 좌표를 몰라도 라벨 옆 칸을 채운다), 행과 열 넣기/지우기, `merge_cells`, `split_cell`, `table_props`(page_break, repeat_header), `table_formula`(=SUM(B2:B5)), `create_table`(after_para, rows[][]), `delete_table`
 - 서식: `format_text`(at, text?, bold, size_pt, color …), `format_paragraph`(align, line_spacing, keep_with_next, page_break_before …), `apply_style`, `set_list`(number | bullet | none)
   - ⚠ **`format_paragraph`의 `left_margin_pt`, `indent_pt`, `space_before_pt`, `space_after_pt`는 이름과 달리 pt가 아니다 — 값 X가 X/200 pt가 된다**(2026-10-06 실측, `doc-tools.js` `paraProps()`가 환산 없이 넘긴다. 15를 주면 0.075pt라 여백이 안 보인다). 고치기 전까지는 **pt × 200**을 넘긴다(15pt → 3000, 내어쓰기 16.9pt → -3380). 저장본의 `<hp:case>` 쪽 값이 X/2(HWPUNIT), `<hp:default>` 쪽이 X다. 코드 수정은 `setup.mjs --build`와 `release.mjs`가 따라야 한다
+- ⚠ **`{"run": "Undo"}`는 `null`만 돌려주고 되돌리지 않는다**(2026-10-07 실측, `format_text` 30pt 뒤). 되돌릴 때는 원래 값을 원본 hwpx의 `charPr height`(또는 `getCharPropertiesAt`)로 읽어 같은 도구로 다시 넣고, `getCharPropertiesAt`로 확인한다
 - 문서 요소: `set_header_footer`(글만), `add_footnote`, `set_field`(누름틀)
 - **플러그인이 더한 것**(2026-10-02, 가이드북 세션 수정 요청):
   - `clone_table`(model, after_para, rows) — 문서에 있는 표(그림 상자, 예시 프롬프트 상자)를 본보기로 복제하고 칸 글만 바꾼다. 테두리, 칸 크기, 글자 모양이 본보기와 같다. `rows` 의 `null` 칸은 본보기 글 그대로, 칸 안 그림도 복제된다(바꾸려면 `image … --replace`). `create_table` 로 만들면 글자 크기가 문서와 달라진다
