@@ -75,10 +75,13 @@ async function pruneStale() {
   }
 }
 
+/** 응답한 서버가 이 인스턴스의 것인가(같은 포트를 다른 인스턴스가 쥐고 있을 수 있다). */
+const ours = (h) => Boolean(h) && path.resolve(h.stateDir || '') === path.resolve(STATE_DIR);
+
 /** start 가 쓸 포트: 이 인스턴스 서버가 살아 있으면 그 포트, 아니면 7780 부터 비어 있는 포트. */
 async function allocatePort() {
   const mine = readPort(STATE_DIR);
-  if (mine && (await probe(mine))) return mine;
+  if (mine && ours(await probe(mine))) return mine;
   for (let p = 7780; p < 7880; p++) {
     if (await probe(p)) continue;
     const free = await new Promise((res) => {
@@ -155,15 +158,22 @@ async function cmd(body) {
 }
 
 async function ensureServer() {
-  if (await health()) return;
+  if (ours(await health())) return;
   if (!fs.existsSync(path.join(HERE, 'studio-dist', 'index.html'))) die('studio-dist 가 없다. 먼저 node setup.mjs 로 빌드한다.');
-  const child = spawn(process.execPath, [path.join(HERE, 'server.mjs')], {
-    detached: true, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, HWPX_EDITOR_PORT: String(PORT), HWPX_EDITOR_STATE: STATE_DIR },
-  });
-  child.unref();
-  fs.writeFileSync(path.join(STATE_DIR, 'port'), String(PORT));
-  for (let i = 0; i < 50; i++) { if (await health()) return; await sleep(200); }
+  // 두 start 가 동시에 같은 빈 포트를 고르면 한쪽 서버만 뜬다. 진 쪽은 포트를 다시 골라 띄운다(2026-10-08)
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const child = spawn(process.execPath, [path.join(HERE, 'server.mjs')], {
+      detached: true, stdio: 'ignore', windowsHide: true,
+      env: { ...process.env, HWPX_EDITOR_PORT: String(PORT), HWPX_EDITOR_STATE: STATE_DIR },
+    });
+    child.unref();
+    fs.writeFileSync(path.join(STATE_DIR, 'port'), String(PORT));
+    let h = null;
+    for (let i = 0; i < 50 && !h; i++) { h = await health(); if (!h) await sleep(200); }
+    if (ours(h)) return;
+    if (!h || process.env.HWPX_EDITOR_PORT) break;
+    PORT = await allocatePort(); BASE = `http://127.0.0.1:${PORT}`;
+  }
   die('서버가 뜨지 않았다');
 }
 
