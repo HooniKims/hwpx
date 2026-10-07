@@ -339,11 +339,10 @@ class HwpxModifier:
 
         base.getparent().append(new_ppr)
 
-        # paraPrList count 업데이트
-        for elem in self.header_tree.iter():
-            if elem.tag.split('}')[-1] == 'paraPrList':
-                elem.set('count', str(int(elem.get('count', '0')) + 1))
-                break
+        # paraPr 개수 업데이트 (실측: <hh:paraProperties itemCnt="N">. 안 올리면 한글이 새 paraPr을 무시해 들여쓰기가 사라진다, 2026-10-08)
+        container = base.getparent()
+        cnt_attr = 'itemCnt' if container.get('itemCnt') is not None else 'count'
+        container.set(cnt_attr, str(int(container.get(cnt_attr, '0')) + 1))
 
         self._header_modified = True
         self._indent_style_cache[key] = str(new_id)
