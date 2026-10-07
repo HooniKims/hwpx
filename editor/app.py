@@ -18,9 +18,6 @@ import webview
 
 url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:7780/"
 title = sys.argv[2] if len(sys.argv) > 2 else "HWPX 에디터 · Claude"
-state = os.environ.get("HWPX_EDITOR_STATE") or os.path.join(
-    os.path.expanduser("~"), ".claude", "cache", "hwpx-editor"
-)
 
 
 class Api:
@@ -77,9 +74,12 @@ window = webview.create_window(
 )
 window.events.closing += on_closing
 # 두 쪽 보기, 확대 비율 같은 에디터 설정(localStorage)이 다음 실행에도 남도록 저장 공간을 고정한다.
+# 인스턴스마다 두면 세션마다 WebView2 프로필(60~400MB)이 새로 쌓이므로 모든 인스턴스가 하나를 함께 쓴다(2026-10-08 130개 7.5GB).
 webview.start(
     private_mode=False,
-    storage_path=os.path.join(state, "webview"),
+    storage_path=os.path.join(
+        os.path.expanduser("~"), ".claude", "cache", "hwpx-editor", "webview"
+    ),
     localization={
         "global.quitConfirmation": "저장하지 않은 편집이 있습니다.\n\n"
         "확인을 누르면 저장하지 않고 닫습니다. 저장하려면 취소를 누르고 Ctrl+S 로 저장하세요."

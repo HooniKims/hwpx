@@ -53,6 +53,28 @@ PORT ||= 7780;
 let BASE = `http://127.0.0.1:${PORT}`;
 fs.mkdirSync(STATE_DIR, { recursive: true });
 
+/**
+ * start 때 7일 넘게 쓰지 않은 다른 인스턴스 폴더를 지운다(세션마다 폴더가 생겨 2026-10-08 130개 9.3GB 가 쌓였다).
+ * 서버가 살아 있는 폴더는 남긴다. 폴더 이름에 한글이 올 수 있어 fs.rmSync 대신 파일 단위로 지운다(Node 24 함정).
+ */
+async function pruneStale() {
+  const rmrf = (p) => {
+    if (fs.lstatSync(p).isDirectory()) { for (const n of fs.readdirSync(p)) rmrf(path.join(p, n)); fs.rmdirSync(p); } else fs.unlinkSync(p);
+  };
+  const limit = Date.now() - 7 * 24 * 3600 * 1000;
+  for (const d of fs.readdirSync(ROOT, { withFileTypes: true })) {
+    const dir = path.join(ROOT, d.name);
+    if (!d.isDirectory() || d.name === 'webview' || path.resolve(dir) === path.resolve(STATE_DIR)) continue;
+    try {
+      const last = Math.max(fs.statSync(dir).mtimeMs, ...fs.readdirSync(dir).map((n) => fs.statSync(path.join(dir, n)).mtimeMs));
+      if (last > limit) continue;
+      const port = readPort(dir);
+      if (port && path.resolve((await probe(port))?.stateDir || '') === path.resolve(dir)) continue;
+      rmrf(dir);
+    } catch { /* 다른 프로세스가 쥐고 있으면 다음 start 때 다시 본다 */ }
+  }
+}
+
 /** start 가 쓸 포트: 이 인스턴스 서버가 살아 있으면 그 포트, 아니면 7780 부터 비어 있는 포트. */
 async function allocatePort() {
   const mine = readPort(STATE_DIR);
@@ -305,6 +327,7 @@ switch (sub) {
     fs.writeFileSync(OPS, kept.map((o) => JSON.stringify(o)).join('\n') + '\n');
     fs.writeFileSync(OPS_SEEN, String(kept.length));
     await ensureServer();
+    await pruneStale();
     await postLog('start', { file, instance: path.basename(STATE_DIR), port: PORT });
     let h = await health();
     if (!h.browser && aliveAppPid()) {                // 옛 앱 창이 새 서버에 다시 붙기를 기다린다
