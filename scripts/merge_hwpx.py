@@ -21,6 +21,7 @@ Usage:
   - 추가 파일의 paraPr 내 <hh:border>와 charPr의 borderFillIDRef는 안전한 기본값
     "1"로 고정 (뷰어가 type=NONE이어도 박스 테두리를 렌더링하는 이슈 방지)
 """
+
 import argparse
 import os
 import re
@@ -43,12 +44,18 @@ HH = "http://www.hancom.co.kr/hwpml/2011/head"
 HC = "http://www.hancom.co.kr/hwpml/2011/core"
 
 LANG_TO_ATTR = {
-    "HANGUL": "hangul", "LATIN": "latin", "HANJA": "hanja",
-    "JAPANESE": "japanese", "OTHER": "other", "SYMBOL": "symbol", "USER": "user",
+    "HANGUL": "hangul",
+    "LATIN": "latin",
+    "HANJA": "hanja",
+    "JAPANESE": "japanese",
+    "OTHER": "other",
+    "SYMBOL": "symbol",
+    "USER": "user",
 }
 
 
 # ==================== 헬퍼 ====================
+
 
 def find_items(header, tag):
     items = []
@@ -72,8 +79,10 @@ def count_skip(paras):
     """secPr/ctrl이 포함된 선두 문단 수 (문단 자체는 보존, 그 내부만 정리)."""
     skip = 0
     for p in paras:
-        if (p.find(f".//{{{HP}}}secPr") is not None
-                or p.find(f".//{{{HP}}}ctrl") is not None):
+        if (
+            p.find(f".//{{{HP}}}secPr") is not None
+            or p.find(f".//{{{HP}}}ctrl") is not None
+        ):
             skip += 1
         else:
             break
@@ -85,8 +94,7 @@ def build_font_map(header_src, header_tgt):
     font_map = {}
     for ff_tgt in header_tgt.iter(f"{{{HH}}}fontface"):
         lang = ff_tgt.get("lang")
-        name_to_id = {f.get("face"): f.get("id")
-                      for f in ff_tgt.iter(f"{{{HH}}}font")}
+        name_to_id = {f.get("face"): f.get("id") for f in ff_tgt.iter(f"{{{HH}}}font")}
         for ff_src in header_src.iter(f"{{{HH}}}fontface"):
             if ff_src.get("lang") == lang:
                 for f in ff_src.iter(f"{{{HH}}}font"):
@@ -110,6 +118,30 @@ def make_pagebreak_para(pid):
 
 
 # ==================== header 통합 ====================
+
+
+def _append_list_defs(header_tgt, header_src, container_tag, item_tag):
+    """src의 번호 정의(numbering)나 글머리표(bullet)를 tgt 목록 끝에 붙인다. src id → tgt id."""
+    items = find_items(header_src, item_tag)
+    if not items:
+        return {}
+    cont = header_tgt.find(f".//{{{HH}}}{container_tag}")
+    if cont is None:
+        cont = etree.SubElement(
+            header_tgt.find(f".//{{{HH}}}refList"), f"{{{HH}}}{container_tag}"
+        )
+    max_t = max((i for i, _ in find_items(header_tgt, item_tag)), default=0)
+    base = min(i for i, _ in items)  # 이 목록은 1부터 센다(borderFill과 같은 함정)
+    out = {}
+    for old_id, elem in items:
+        new_id = max_t + 1 + (old_id - base)
+        out[old_id] = new_id
+        new_elem = deepcopy(elem)
+        new_elem.set("id", str(new_id))
+        cont.append(new_elem)
+    cont.set("itemCnt", str(len(list(cont))))
+    return out
+
 
 def integrate_header(header_tgt, header_src):
     """src header 항목을 tgt header에 offset으로 추가.
@@ -156,6 +188,12 @@ def integrate_header(header_tgt, header_src):
         cp_container.append(new_elem)
     cp_container.set("itemCnt", str(len(list(cp_container))))
 
+    # 번호 정의와 글머리표도 옮긴다. 옮기지 않으면 paraPr의 <hh:heading idRef>가 기반 파일의
+    # 같은 번호 정의를 가리켜 번호가 앞 파일에서 이어진다 — 카드마다 「1. 채점 기준표」였던 것이
+    # 붙인 카드에서 「2.」가 됐다 (2026-10-07)
+    num_map = _append_list_defs(header_tgt, header_src, "numberings", "numbering")
+    bullet_map = _append_list_defs(header_tgt, header_src, "bullets", "bullet")
+
     # paraPr 추가 — 내부 <hh:border>의 borderFillIDRef는 "1"로 강제
     pp_map = {}
     pp_container = header_tgt.find(f".//{{{HH}}}paraProperties")
@@ -166,6 +204,13 @@ def integrate_header(header_tgt, header_src):
         new_elem.set("id", str(new_id))
         for border in new_elem.iter(f"{{{HH}}}border"):
             border.set("borderFillIDRef", "1")
+        for hd in new_elem.iter(f"{{{HH}}}heading"):
+            ref, kind = hd.get("idRef"), hd.get("type")
+            table = (
+                num_map if kind == "NUMBER" else bullet_map if kind == "BULLET" else {}
+            )
+            if ref and ref.isdigit() and int(ref) in table:
+                hd.set("idRef", str(table[int(ref)]))
         pp_container.append(new_elem)
     pp_container.set("itemCnt", str(len(list(pp_container))))
 
@@ -173,6 +218,7 @@ def integrate_header(header_tgt, header_src):
 
 
 # ==================== section 리맵 + 이어쓰기 ====================
+
 
 def _strip_section_control(para):
     """문단 내부의 <hp:secPr>/<hp:ctrl> 요소를 제거하고 빈 run을 정리한다.
@@ -192,8 +238,9 @@ def _strip_section_control(para):
                 parent.remove(run)
 
 
-def remap_and_append_section(root_tgt, root_src, cp_map, pp_map, bf_map,
-                             img_prefix, pid_start, pagebreak=True):
+def remap_and_append_section(
+    root_tgt, root_src, cp_map, pp_map, bf_map, img_prefix, pid_start, pagebreak=True
+):
     """src section 문단을 리맵해서 tgt section 끝에 추가. 마지막 pid 반환."""
     # *IDRef 리맵
     for elem in root_src.iter():
@@ -234,6 +281,7 @@ def remap_and_append_section(root_tgt, root_src, cp_map, pp_map, bf_map,
 
 # ==================== 공개 API ====================
 
+
 def merge_hwpx(files, output, pagebreak=True, img_prefix_tpl="s{idx}_"):
     """N개의 HWPX 파일을 병합한다 (첫 파일 기반, 나머지를 순차 이어쓰기).
 
@@ -255,34 +303,43 @@ def merge_hwpx(files, output, pagebreak=True, img_prefix_tpl="s{idx}_"):
         header_tgt = etree.fromstring(z.read("Contents/header.xml"))
         root_tgt = etree.fromstring(z.read("Contents/section0.xml"))
         base_hpf = z.read("Contents/content.hpf").decode("utf-8")
-        all_bindata = {n: z.read(n) for n in z.namelist()
-                       if n.startswith("BinData/")}
+        all_bindata = {n: z.read(n) for n in z.namelist() if n.startswith("BinData/")}
 
     pid = get_max_id(root_tgt) + 1000
 
     for idx, src_path in enumerate(files[1:], start=1):
         img_prefix = img_prefix_tpl.format(idx=idx)
-        print(f"[{idx}/{len(files)-1}] {src_path.name} (prefix={img_prefix})")
+        print(f"[{idx}/{len(files) - 1}] {src_path.name} (prefix={img_prefix})")
         with zipfile.ZipFile(str(src_path)) as z:
             header_src = etree.fromstring(z.read("Contents/header.xml"))
             root_src = etree.fromstring(z.read("Contents/section0.xml"))
-            src_bindata = {n: z.read(n) for n in z.namelist()
-                           if n.startswith("BinData/")}
+            src_bindata = {
+                n: z.read(n) for n in z.namelist() if n.startswith("BinData/")
+            }
 
         cp_map, pp_map, bf_map = integrate_header(header_tgt, header_src)
-        pid = remap_and_append_section(root_tgt, root_src,
-                                       cp_map, pp_map, bf_map,
-                                       img_prefix, pid, pagebreak=pagebreak)
+        pid = remap_and_append_section(
+            root_tgt,
+            root_src,
+            cp_map,
+            pp_map,
+            bf_map,
+            img_prefix,
+            pid,
+            pagebreak=pagebreak,
+        )
 
         for name, data in src_bindata.items():
             fname_only = name.split("/", 1)[1]
             all_bindata[f"BinData/{img_prefix}{fname_only}"] = data
 
     # 재조립
-    new_hdr = etree.tostring(header_tgt, xml_declaration=True,
-                             encoding="UTF-8", standalone=True)
-    new_sec = etree.tostring(root_tgt, xml_declaration=True,
-                             encoding="UTF-8", standalone=True)
+    new_hdr = etree.tostring(
+        header_tgt, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    new_sec = etree.tostring(
+        root_tgt, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
     existing_ids = set(re.findall(r'<opf:item id="([^"]+)"[^>]*BinData', base_hpf))
     new_items = ""
@@ -291,11 +348,18 @@ def merge_hwpx(files, output, pagebreak=True, img_prefix_tpl="s{idx}_"):
         img_id = fname_only.rsplit(".", 1)[0]
         if img_id not in existing_ids:
             ext = fname_only.rsplit(".", 1)[-1].lower()
-            mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
-                        "png": "image/png", "bmp": "image/bmp", "gif": "image/gif"}
-            new_items += (f'<opf:item id="{img_id}" href="BinData/{fname_only}" '
-                          f'media-type="{mime_map.get(ext, "image/png")}" '
-                          f'isEmbeded="1"/>')
+            mime_map = {
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "png": "image/png",
+                "bmp": "image/bmp",
+                "gif": "image/gif",
+            }
+            new_items += (
+                f'<opf:item id="{img_id}" href="BinData/{fname_only}" '
+                f'media-type="{mime_map.get(ext, "image/png")}" '
+                f'isEmbeded="1"/>'
+            )
     new_hpf = base_hpf.replace("</opf:manifest>", new_items + "</opf:manifest>")
 
     tmp = str(output) + ".tmp"
@@ -323,35 +387,49 @@ def merge_hwpx(files, output, pagebreak=True, img_prefix_tpl="s{idx}_"):
     shutil.move(tmp, str(output))
 
     print("fix_namespaces + validate")
-    subprocess.run([sys.executable, str(SCRIPT_DIR / "fix_namespaces.py"),
-                    str(output)], capture_output=True)
-    r = subprocess.run([sys.executable, str(SCRIPT_DIR / "validate.py"),
-                        str(output)],
-                       capture_output=True, text=True, encoding="utf-8")
+    subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / "fix_namespaces.py"), str(output)],
+        capture_output=True,
+    )
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / "validate.py"), str(output)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
     print(r.stdout.strip())
 
 
 # ==================== CLI ====================
 
+
 def main():
     ap = argparse.ArgumentParser(
         description="HWPX N-파일 병합기 (첫 파일 기반 이어쓰기)"
     )
-    ap.add_argument("files", nargs="+",
-                    help="병합할 HWPX 파일 (2개 이상, 첫 파일이 고정 기반)")
+    ap.add_argument(
+        "files", nargs="+", help="병합할 HWPX 파일 (2개 이상, 첫 파일이 고정 기반)"
+    )
     ap.add_argument("-o", "--output", required=True, help="출력 HWPX")
-    ap.add_argument("--no-pagebreak", action="store_true",
-                    help="파일 사이 페이지 넘김 생략")
-    ap.add_argument("--img-prefix-tpl", default="s{idx}_",
-                    help="이미지 접두어 템플릿 (기본: s{idx}_)")
+    ap.add_argument(
+        "--no-pagebreak", action="store_true", help="파일 사이 페이지 넘김 생략"
+    )
+    ap.add_argument(
+        "--img-prefix-tpl",
+        default="s{idx}_",
+        help="이미지 접두어 템플릿 (기본: s{idx}_)",
+    )
     args = ap.parse_args()
 
     if len(args.files) < 2:
         ap.error("최소 2개 파일이 필요합니다")
 
-    merge_hwpx(args.files, args.output,
-               pagebreak=not args.no_pagebreak,
-               img_prefix_tpl=args.img_prefix_tpl)
+    merge_hwpx(
+        args.files,
+        args.output,
+        pagebreak=not args.no_pagebreak,
+        img_prefix_tpl=args.img_prefix_tpl,
+    )
 
 
 if __name__ == "__main__":

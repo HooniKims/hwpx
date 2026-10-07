@@ -1126,8 +1126,8 @@ if tag in ("tc", "tbl"):
 > python3 "${CLAUDE_SKILL_DIR}/scripts/merge_hwpx.py" file1.hwpx file2.hwpx -o merged.hwpx [--no-pagebreak] [--img-prefix-tpl "s{idx}_"]
 > ```
 > **첫 파일이 고정 기반이고 인자 순서가 곧 문서 순서다**(옛 `--base`/`--order` 옵션은 없다). 추가 파일의
-> charPr·paraPr·borderFill 은 기반 header 목록 **끝에 append** 되고 section 참조가 리맵되므로(규칙 32),
-> 한쪽에만 있는 서식(밑줄 charPr 등)도 보존된다.
+> charPr·paraPr·borderFill·번호 정의(numbering)·글머리표(bullet) 는 기반 header 목록 **끝에 append** 되고 section 참조가 리맵되므로(규칙 32),
+> 한쪽에만 있는 서식(밑줄 charPr 등)도 보존된다. 번호 정의를 옮기지 않던 때에는 자동 번호 제목이 앞 파일에서 이어져 「1.」이 「2.」로 나왔다(2026-10-07).
 > ⚠ **파일 사이 페이지 넘김은 기본으로 들어간다.** 뒤 파일의 첫 문단이 이미 쪽 시작을 갖고 있으면
 > **빈 쪽이 하나 끼므로** `--no-pagebreak` 를 준다 — 병합 후 쪽수가 원본 합보다 많으면 이것부터 의심한다
 > (2026-09-16 실측: 3쪽 + 6쪽이 10쪽으로 나왔고, 빼니 9쪽으로 맞았다). **PDF 로 렌더해야 드러난다.**
