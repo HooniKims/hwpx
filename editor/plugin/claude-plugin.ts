@@ -705,7 +705,13 @@ function installToolbarFixes(getInputHandler) {
     if (props && !props.__cellProps) {
       const origCan = props.canExecute;
       const origExec = props.execute;
-      props.canExecute = (ctx) => origCan(ctx) || ctx.inTable;
+      // 칸 안 확장은 도구 모음 단추와 Ctrl+N,K 용이다. 맨 글쇠 P(개체 속성 단축키)까지 받으면 칸 안에서 p 를 칠 때마다
+      // 표/셀 속성이 열리고 글자가 들어가지 않았다(2026-10-11 사용자 보고) — 지금 처리 중인 키가 수식키 없는 P 면 넓히지 않는다
+      const plainP = () => {
+        const ev = window.event;
+        return ev instanceof KeyboardEvent && ev.code === 'KeyP' && !ev.ctrlKey && !ev.altKey && !ev.metaKey;
+      };
+      props.canExecute = (ctx) => origCan(ctx) || (ctx.inTable && !plainP());
       props.execute = (services, params) => {
         const h = services.getInputHandler();
         if (!h?.isInPictureObjectSelection?.() && !h?.isInTableObjectSelection?.() && h?.getCursorPosition?.().parentParaIndex !== undefined) {
