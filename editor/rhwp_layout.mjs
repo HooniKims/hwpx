@@ -147,68 +147,25 @@ export async function rhwpLayout(input) {
   const orig = secs.map((e) => stripMixedCellLinesegs(e.data.toString('utf8')).xml);
   const trees = orig.map((x) => tableTree(x));
 
-  // ① 높이 0 으로 열어 잰다
-  let zeroed = 0;
-  secs.forEach((e, s) => {
-    const r = setHeights(orig[s], () => 0);
-    zeroed += r.changed;
-    e.data = Buffer.from(r.xml, 'utf8');
-  });
-  if (!zeroed) { secs.forEach((e, s) => { e.data = Buffer.from(orig[s], 'utf8'); }); return { buf: writeZip(entries), tables: 0 }; }
-  const doc = new Doc(new Uint8Array(writeZip(entries)));
-  const secCount = doc.getSectionCount();
-  const ctrls = JSON.parse(doc.getControls()).filter((c) => c.ctrlId === 'tbl' && c.list < secCount);
-  // 행마다 rowSpan 1 칸의 가장 큰 높이를 더한다. 쪽을 넘는 행은 조각을 따로 센다
-  const heightOfBoxes = (boxes) => {
-    const rows = new Map();
-    for (const b of boxes) {
-      if (b.rowSpan !== 1) continue;
-      const k = `${b.row}@${b.pageIndex}`;
-      rows.set(k, Math.max(rows.get(k) ?? 0, b.h));
-    }
-    return Math.round([...rows.values()].reduce((a, b) => a + b, 0) * 75);   // px → HWPUNIT(96dpi)
+  // 표마다 안쪽 표의 깊이(안쪽 표가 없으면 0)
+  const level = orig.map(() => new Map());
+  const levelOf = (s, t) => {
+    let lv = 0;
+    for (const c of t.cells) for (const ts of c.paras) for (const n of ts ?? []) lv = Math.max(lv, levelOf(s, n) + 1);
+    level[s].set(t.start, lv);
+    return lv;
   };
+  const maxLevel = Math.max(0, ...trees.flatMap((ts, s) => ts.map((t) => levelOf(s, t))));
+
+  // ① 높이 0 으로 열어 잰다. 높이 0 인 안쪽 표는 바깥 칸의 줄 높이에 0 으로 들어가 바깥 표가 그만큼 작게 잰다
+  // (2026-10-11 가이드북 2-3: 「참고」 머리표를 담은 큰 표가 한 줄 모자라 마지막 줄이 잘렸다). 그래서 안쪽 표부터 재고,
+  // 잰 높이를 적은 채 한 겹 바깥 표를 다시 잰다 — 단계 j 에서는 깊이 j 이상인 표만 0 으로 두고 깊이 j 인 표의 값을 받는다.
   const heights = orig.map(() => new Map());   // 구역마다 node.start → 높이
-  const bodyCount = trees.map(() => 0);
-  // 칸 안의 표: XML 순서로 경로를 만든다. 문단 안 컨트롤 번호는 엔진이 표로 여는 번호를 차례로 맞춘다
-  const nested = (s, para, prefix, node) => {
-    node.cells.forEach((cell, ci) => {
-      cell.paras.forEach((ts, pi) => {
-        if (!ts?.length) return;
-        const here = prefix.slice(0, -1).concat({ ...prefix[prefix.length - 1], cellIndex: ci, cellParaIndex: pi });
-        const tableCtrls = [];
-        for (let k = 0; k < 32 && tableCtrls.length < ts.length; k++) {
-          try { doc.getTableDimensionsByPath(s, para, JSON.stringify([...here, { controlIndex: k, cellIndex: 0, cellParaIndex: 0 }])); tableCtrls.push(k); } catch { /* 표가 아니다 */ }
-        }
-        ts.forEach((t, k) => {
-          if (t.inShape || tableCtrls[k] == null) return;
-          const pathJson = JSON.stringify([...here, { controlIndex: tableCtrls[k], cellIndex: 0, cellParaIndex: 0 }]);
-          try {
-            const dim = JSON.parse(doc.getTableDimensionsByPath(s, para, pathJson));
-            if (dim.rowCount !== t.rows || dim.colCount !== t.cols) return;   // 짝이 틀렸다 — 그대로 둔다
-            heights[s].set(t.start, heightOfBoxes(JSON.parse(doc.getTableCellBboxesByPath(s, para, pathJson))));
-          } catch { return; }
-          nested(s, para, [...here, { controlIndex: tableCtrls[k], cellIndex: 0, cellParaIndex: 0 }], t);
-        });
-      });
-    });
-  };
-  const pageOf = (s, p) => { try { return JSON.parse(doc.getPageOfPosition(s, p)).page; } catch { return null; } };
-  for (const c of ctrls) {
-    let boxes;
-    // 엔진은 본문 표를 (문단 번호, 컨트롤 번호)로만 찾아 번호가 같은 다른 표 속의 표까지 집는다(2쪽 그래프 상자가 3쪽 표 높이에
-    // 더해져 표가 쪽 밖으로 나갔다, 2026-10-05). 표가 놓일 수 있는 쪽 — 이 문단의 쪽부터 다음 문단의 쪽까지 — 만 받는다.
-    const first = pageOf(c.list, c.para);
-    const last = pageOf(c.list, c.para + 1);
-    try { boxes = JSON.parse(doc.getTableCellBboxes(c.list, c.para, c.controlIndex, first ?? undefined)); } catch { continue; }   // 본문 표가 아니다
-    boxes = boxes.filter((b) => (first == null || b.pageIndex >= first) && (last == null || b.pageIndex <= last));
-    const node = trees[c.list][bodyCount[c.list]++];
-    if (!node) continue;
-    heights[c.list].set(node.start, heightOfBoxes(boxes));
-    nested(c.list, c.para, [{ controlIndex: c.controlIndex, cellIndex: 0, cellParaIndex: 0 }], node);
+  for (let j = 0; j <= maxLevel; j++) {
+    const got = measure((s, start) => ((level[s].get(start) ?? 0) >= j ? 0 : heights[s].get(start)));
+    if (!got) { secs.forEach((e, s) => { e.data = Buffer.from(orig[s], 'utf8'); }); return { buf: writeZip(entries), tables: 0 }; }
+    got.forEach((m, s) => m.forEach((h, start) => { if ((level[s].get(start) ?? 0) === j) heights[s].set(start, h); }));
   }
-  doc.free?.();
-  bodyCount.forEach((n, s) => { if (n !== trees[s].length) throw new Error(`section${s} 표 수가 맞지 않는다(${n}/${trees[s].length})`); });
 
   // ② 잰 높이를 적는다
   let tables = 0;
@@ -218,6 +175,72 @@ export async function rhwpLayout(input) {
     e.data = Buffer.from(r.xml, 'utf8');
   });
   return { buf: writeZip(entries), tables };
+
+  /** heightOf(구역, node.start) 로 높이를 적은 판을 열어 표마다 잰 높이를 돌려준다. 0 으로 둔 표가 없으면 null. */
+  function measure(heightOf) {
+    let zeroed = 0;
+    secs.forEach((e, s) => {
+      const r = setHeights(orig[s], (start) => heightOf(s, start));
+      if (r.changed) zeroed++;
+      e.data = Buffer.from(r.xml, 'utf8');
+    });
+    if (!zeroed) return null;
+    const doc = new Doc(new Uint8Array(writeZip(entries)));
+    const secCount = doc.getSectionCount();
+    const ctrls = JSON.parse(doc.getControls()).filter((c) => c.ctrlId === 'tbl' && c.list < secCount);
+    // 행마다 rowSpan 1 칸의 가장 큰 높이를 더한다. 쪽을 넘는 행은 조각을 따로 센다
+    const heightOfBoxes = (boxes) => {
+      const rows = new Map();
+      for (const b of boxes) {
+        if (b.rowSpan !== 1) continue;
+        const k = `${b.row}@${b.pageIndex}`;
+        rows.set(k, Math.max(rows.get(k) ?? 0, b.h));
+      }
+      return Math.round([...rows.values()].reduce((a, b) => a + b, 0) * 75);   // px → HWPUNIT(96dpi)
+    };
+    const heights = orig.map(() => new Map());   // 구역마다 node.start → 높이
+    const bodyCount = trees.map(() => 0);
+    // 칸 안의 표: XML 순서로 경로를 만든다. 문단 안 컨트롤 번호는 엔진이 표로 여는 번호를 차례로 맞춘다
+    const nested = (s, para, prefix, node) => {
+      node.cells.forEach((cell, ci) => {
+        cell.paras.forEach((ts, pi) => {
+          if (!ts?.length) return;
+          const here = prefix.slice(0, -1).concat({ ...prefix[prefix.length - 1], cellIndex: ci, cellParaIndex: pi });
+          const tableCtrls = [];
+          for (let k = 0; k < 32 && tableCtrls.length < ts.length; k++) {
+            try { doc.getTableDimensionsByPath(s, para, JSON.stringify([...here, { controlIndex: k, cellIndex: 0, cellParaIndex: 0 }])); tableCtrls.push(k); } catch { /* 표가 아니다 */ }
+          }
+          ts.forEach((t, k) => {
+            if (t.inShape || tableCtrls[k] == null) return;
+            const pathJson = JSON.stringify([...here, { controlIndex: tableCtrls[k], cellIndex: 0, cellParaIndex: 0 }]);
+            try {
+              const dim = JSON.parse(doc.getTableDimensionsByPath(s, para, pathJson));
+              if (dim.rowCount !== t.rows || dim.colCount !== t.cols) return;   // 짝이 틀렸다 — 그대로 둔다
+              heights[s].set(t.start, heightOfBoxes(JSON.parse(doc.getTableCellBboxesByPath(s, para, pathJson))));
+            } catch { return; }
+            nested(s, para, [...here, { controlIndex: tableCtrls[k], cellIndex: 0, cellParaIndex: 0 }], t);
+          });
+        });
+      });
+    };
+    const pageOf = (s, p) => { try { return JSON.parse(doc.getPageOfPosition(s, p)).page; } catch { return null; } };
+    for (const c of ctrls) {
+      let boxes;
+      // 엔진은 본문 표를 (문단 번호, 컨트롤 번호)로만 찾아 번호가 같은 다른 표 속의 표까지 집는다(2쪽 그래프 상자가 3쪽 표 높이에
+      // 더해져 표가 쪽 밖으로 나갔다, 2026-10-05). 표가 놓일 수 있는 쪽 — 이 문단의 쪽부터 다음 문단의 쪽까지 — 만 받는다.
+      const first = pageOf(c.list, c.para);
+      const last = pageOf(c.list, c.para + 1);
+      try { boxes = JSON.parse(doc.getTableCellBboxes(c.list, c.para, c.controlIndex, first ?? undefined)); } catch { continue; }   // 본문 표가 아니다
+      boxes = boxes.filter((b) => (first == null || b.pageIndex >= first) && (last == null || b.pageIndex <= last));
+      const node = trees[c.list][bodyCount[c.list]++];
+      if (!node) continue;
+      heights[c.list].set(node.start, heightOfBoxes(boxes));
+      nested(c.list, c.para, [{ controlIndex: c.controlIndex, cellIndex: 0, cellParaIndex: 0 }], node);
+    }
+    doc.free?.();
+    bodyCount.forEach((n, s) => { if (n !== trees[s].length) throw new Error(`section${s} 표 수가 맞지 않는다(${n}/${trees[s].length})`); });
+    return heights;
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
