@@ -8,6 +8,11 @@ allowed-tools: Bash(python3 *), Read, Write, Glob, Grep
 
 HWPX는 한컴오피스 한글의 개방형 문서 포맷이다. **ZIP 패키지 + XML 파트** 구조.
 
+## 새 버전 확인
+
+이 스킬을 쓰는 대화에서 처음 한 번 `python3 ${CLAUDE_SKILL_DIR}/scripts/check_update.py` 를 실행한다(하루 한 번만 GitHub 를 조회하고, 나머지는 캐시라 즉시 끝난다).
+출력이 있으면 그 변경 목록을 사용자에게 알리고 지금 받을지 묻는다. 받겠다고 하면 출력에 적힌 명령(`git pull`, 에디터가 바뀌었으면 `setup.mjs`)을 실행한다. 출력이 없으면 아무 말 없이 본 작업으로 간다.
+
 ## 스킬 디렉토리
 
 ```
