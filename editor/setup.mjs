@@ -440,6 +440,8 @@ const RUST_PATCHES = [
     ['cell-tac-object-preceding', 'src/renderer/layout/table_layout.rs'],
     // 쪽에 걸친 칸에서 글이 있는 문단의 글자처럼 취급 표를 글 줄 다음이 아니라 표가 든 줄에(표 앞에 글자를 치면 표 높이만큼 빈 자리)
     ['cell-tac-table-line', 'src/renderer/layout/table_partial.rs'],
+    // 줄 배치 없는 문단의 글자처럼 취급 + 글 뒤로/글 앞으로 표가 높이를 차지하지 않아 다음 문단이 표 위에 겹치던 것
+    ['tac-overlay-flow', 'src/renderer/layout.rs'],
   ].flatMap(([id, file]) => {
     const blocks = fs.readFileSync(path.join(HERE, 'patches', `${id}.rs`), 'utf8').replace(/\r\n/g, '\n')
       .replace(/^\/\/ ==== find ====\n/, '').split('\n// ==== next ====\n').map((b) => b.split('\n// ==== replace ====\n'));
