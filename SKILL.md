@@ -8,6 +8,10 @@ allowed-tools: Bash(python3 *), Read, Write, Glob, Grep
 
 HWPX는 한컴오피스 한글의 개방형 문서 포맷이다. **ZIP 패키지 + XML 파트** 구조.
 
+## 최초 설치 확인
+
+대화에서 처음 사용할 때 `references/installation.md`에 따라 실행 환경과 필요한 기능의 설치 상태를 확인한다. 로컬 실행이 가능하면 `scripts/install_helper.py --check`를 사용하고, 반환된 `python` 경로를 이후 Python 명령에 사용한다. 준비되지 않았고 사용자 PC에서 명령을 실행할 수 있으면 **스킬에 포함된 `scripts/install_helper.py --install`을 우선 실행**한다. 설치 후 `--check`로 다시 확인하고 본 작업을 계속한다. 로컬 실행이 불가능할 때만 포함된 설치 파일의 첨부 또는 확인된 다운로드 링크를 안내한다. Python·Node.js 자체가 없으면 공식 설치 안내를 제공한다. 클라우드 실행 환경을 사용자 PC로 간주하지 않는다. 설치가 끝났으면 요청한 문서 작업을 계속한다.
+
 ## 새 버전 확인
 
 이 스킬을 쓰는 대화에서 처음 한 번 `python3 ${CLAUDE_SKILL_DIR}/scripts/check_update.py` 를 실행한다(하루 한 번만 GitHub 를 조회하고, 나머지는 캐시라 즉시 끝난다).
@@ -100,9 +104,7 @@ ${CLAUDE_SKILL_DIR}/
 
 ## 환경 설정
 
-```bash
-pip install python-hwpx lxml --break-system-packages
-```
+초기 설치와 전용 Python 환경은 `references/installation.md`를 따른다. 수동 설치도 `python3 scripts/install_helper.py --install`로 진행할 수 있다.
 
 ---
 

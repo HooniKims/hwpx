@@ -7,3 +7,8 @@ __pycache__/
 editor/.build/
 editor/studio-dist/
 editor/sdk/
+
+# 설치 도우미의 로컬 환경, 로그, 배포 파일
+.venv/
+install.log
+dist/

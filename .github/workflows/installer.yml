@@ -1,0 +1,52 @@
+name: Package installer
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '검증한 ZIP을 installer-v1 릴리스에 게시'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m unittest discover -s tests -p test_install_helper.py
+      - run: python scripts/install_helper.py --check
+      - run: python scripts/install_helper.py --install
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/package_installer.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hwpx-setup
+          path: dist/*
+      - name: Publish download
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view installer-v1 >/dev/null 2>&1; then
+            gh release create installer-v1 --target "$GITHUB_SHA" --title "HWPX 설치 도우미" --notes "ZIP을 모두 압축 해제한 뒤 운영체제에 맞는 설치하기 파일을 실행하세요."
+          fi
+          gh release upload installer-v1 dist/hwpx-setup.zip dist/hwpx-setup.zip.sha256 --clobber

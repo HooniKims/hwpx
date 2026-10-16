@@ -70,6 +70,12 @@ rhwp 포팅 상세는 [`references/rhwp-benchmark.md`](references/rhwp-benchmark
 
 ## 설치
 
+설치 도우미가 스킬에 포함되어 있습니다. 로컬 명령을 실행할 수 있는 환경에서는 스킬이 최초 사용 시 상태를 확인하고, 필요한 경우 내장 도우미를 실행한 뒤 문서 작업을 이어갑니다. 별도 다운로드는 필요하지 않습니다.
+
+로컬 실행이 불가능한 채팅 환경에서는 설치 ZIP 첨부 또는 확인된 다운로드 링크로 안내합니다. 배포된 `hwpx-setup.zip`을 압축 해제한 뒤 Windows는 `설치하기.cmd`, macOS는 `설치하기.command`를 실행합니다. 설치 후 `시작하기` 파일로 브라우저 에디터를 엽니다. Python·Node.js가 없으면 공식 설치 페이지를 안내합니다. [사용 안내](installer/사용안내.md) · [채팅 안내 및 배포 방법](references/installation.md). 다운로드 링크는 릴리스 게시 후 사용할 수 있습니다.
+
+아래는 기존 수동 설치 방법입니다.
+
 ```bash
 # Claude Code 스킬 디렉토리에 클론
 git clone https://github.com/HooniKims/hwpx.git ~/.claude/skills/hwpx
@@ -85,7 +91,7 @@ node ~/.claude/skills/hwpx/editor/setup.mjs   # 미리 빌드한 에디터 받�
 **업데이트 알림**(2026-10-14): 스킬을 쓰는 대화에서 Claude 가 `scripts/check_update.py` 로 하루 한 번 GitHub 를 확인하고, 새 변경이 있으면 목록을 보여 주고 받을지 묻는다. 직접 받으려면 `git -C ~/.claude/skills/hwpx pull` 뒤 에디터가 바뀌었으면 `node ~/.claude/skills/hwpx/editor/setup.mjs`.
 
 **`setup.mjs` 는 먼저 GitHub 릴리스의 미리 빌드한 에디터를 받는다**(2026-10-02). `editor/prebuilt.json` 의 원본 지문(`patches/`, `plugin/`, `setup.mjs`)이 받은 스킬과 같으면 그 묶음(엔진 패치가 모두 든 WASM 과 화면)을 받아 sha256 을 확인하고 푼다 — Rust 도 rhwp 소스도 필요 없다. 지문이 달라도(관리자가 릴리스를 빠뜨린 경우) 빌드하지 않고 지난 묶음을 받으며 경고만 낸다. 받기는 주소마다 세 번 시도하고, 그래도 실패하면 빌드로 넘어가지 않고 멈춘다(2026-10-03, 공유받은 PC 가 모르는 새 10분 넘게 빌드하던 것). 직접 빌드는 `--build` 일 때만 한다: Rust(`~/.cargo` 의 cargo, wasm-pack)가 있으면 `editor/patches/` 를 넣어 WASM 을 빌드하고, 없으면 npm 의 공식 WASM 을 쓴다(그때는 아래 「에디터 모드」의 엔진 패치가 빠진다).
-관리자는 엔진이나 플러그인을 고친 뒤 `node editor/setup.mjs --build` → `node editor/release.mjs`(gh 로그인 필요)로 hwpx, hwpx2 릴리스에 새 묶음을 올리고 `prebuilt.json` 을 커밋한다.
+관리자는 엔진이나 플러그인을 고친 뒤 `node editor/setup.mjs --build` → `node editor/release.mjs`(gh 로그인 필요)로 HooniKims/hwpx 릴리스에 새 묶음을 올리고 `prebuilt.json` 을 커밋한다.
 
 **한글(한컴오피스)이 없어도 된다(2026-10-02).** HWP→HWPX 변환, 빌드 마지막 줄 배치 보정, 양식 미리보기 PDF 를 모두 rhwp 로 한다(`scripts/rhwp_convert.py`). 엔진은 처음 쓸 때 받아 캐시에 둔다.
 

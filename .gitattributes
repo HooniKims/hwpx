@@ -1,0 +1,4 @@
+
+# Keep double-click launchers compatible with each platform.
+*.cmd text eol=crlf
+*.command text eol=lf
