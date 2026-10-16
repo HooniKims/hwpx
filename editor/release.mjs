@@ -15,7 +15,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { MANIFEST, packDist, sourceHash } from './prebuilt.mjs';
 
-const REPOS = ['imsebeom/hwpx', 'imsebeom/hwpx2'];
+const REPOS = ['HooniKims/hwpx'];
 const KEEP = 3;
 const HERE = path.dirname(MANIFEST);
 const gh = (args) => spawnSync('gh', args, { encoding: 'utf8' });

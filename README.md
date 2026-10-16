@@ -72,7 +72,7 @@ rhwp 포팅 상세는 [`references/rhwp-benchmark.md`](references/rhwp-benchmark
 
 ```bash
 # Claude Code 스킬 디렉토리에 클론
-git clone https://github.com/imsebeom/hwpx.git ~/.claude/skills/hwpx
+git clone https://github.com/HooniKims/hwpx.git ~/.claude/skills/hwpx
 
 # 의존성
 pip install lxml Pillow
